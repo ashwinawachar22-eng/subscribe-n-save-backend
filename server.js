@@ -74,4 +74,8 @@ app.post("/api/subscriptions/:id/:action",(req,res)=>{
 });
 
 app.get("/api/payments",(req,res)=>res.json(payments));
-app.listen(4000,()=>console.log("Backend running on http://localhost:4000"));
+const PORT = process.env.PORT || 4000;
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Backend running on port ${PORT}`);
+});
