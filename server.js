@@ -114,341 +114,527 @@ const events = [
 ];
 
 function id(prefix) {
-  return prefix + crypto.randomUUID().slice(0, 8).toUpperCase();
+  return (
+    prefix +
+    crypto.randomUUID().slice(0, 8).toUpperCase()
+  );
 }
 
 function nextMonthDate() {
   const d = new Date();
-  d.setMonth(d.getMonth() + 1);
-  return d.toISOString().slice(0, 10);
+
+  d.setMonth(
+    d.getMonth() + 1
+  );
+
+  return d
+    .toISOString()
+    .slice(0, 10);
 }
 
 /* =========================
    HEALTH
 ========================= */
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "UP",
-    service: "subscribe-n-save-backend"
-  });
-});
+app.get(
+  "/api/health",
+  (req, res) => {
+    res.json({
+      status: "UP",
+      service:
+        "subscribe-n-save-backend"
+    });
+  }
+);
 
 /* =========================
    SUBSCRIPTIONS
 ========================= */
 
-app.get("/api/subscriptions", (req, res) => {
-  res.json(subscriptions);
-});
+app.get(
+  "/api/subscriptions",
+  (req, res) => {
+    res.json(subscriptions);
+  }
+);
 
-app.get("/api/subscriptions/:id/events", (req, res) => {
-  res.json(
-    events.filter(
-      (e) => e.subscriptionId === req.params.id
-    )
-  );
-});
+app.get(
+  "/api/subscriptions/:id/events",
+  (req, res) => {
+    res.json(
+      events.filter(
+        (e) =>
+          e.subscriptionId ===
+          req.params.id
+      )
+    );
+  }
+);
 
 /* =========================
    PAYMENTS
 ========================= */
 
-app.get("/api/payments", (req, res) => {
-  res.json(payments);
-});
+app.get(
+  "/api/payments",
+  (req, res) => {
+    res.json(payments);
+  }
+);
 
 /* =========================
    CUSTOMER ENROLLMENT
    Initial payment = CIT
 ========================= */
 
-app.post("/api/subscriptions/enroll", (req, res) => {
-  const {
-    customerName,
-    plan,
-    amount,
-    currency = "INR",
-    frequency = "MONTHLY",
-    paymentMethod,
-    consent
-  } = req.body;
+app.post(
+  "/api/subscriptions/enroll",
+  (req, res) => {
+    const {
+      customerName,
+      plan,
+      amount,
+      currency = "INR",
+      frequency = "MONTHLY",
+      paymentMethod,
+      consent
+    } = req.body;
 
-  if (
-    !customerName ||
-    !plan ||
-    !amount ||
-    !paymentMethod ||
-    consent !== true
-  ) {
-    return res.status(400).json({
-      error:
-        "Customer name, plan, amount, payment method and recurring-payment consent are required."
-    });
+    if (
+      !customerName ||
+      !plan ||
+      !amount ||
+      !paymentMethod ||
+      consent !== true
+    ) {
+      return res
+        .status(400)
+        .json({
+          error:
+            "Customer name, plan, amount, payment method and recurring-payment consent are required."
+        });
+    }
+
+    const subscriptionId =
+      id("SUB-SIM-");
+
+    const paymentId =
+      id("PAY-CIT-");
+
+    const nextBillingDate =
+      nextMonthDate();
+
+    const subscription = {
+      id: subscriptionId,
+      customer: customerName,
+      plan,
+      amount: Number(amount),
+      currency,
+      frequency,
+      status: "ACTIVE",
+      nextBillingDate,
+      paymentMethod:
+        `•••• ${String(
+          paymentMethod
+        ).slice(-4)}`
+    };
+
+    const payment = {
+      id: paymentId,
+      subscriptionId,
+      amount: Number(amount),
+      status: "SUCCESS",
+      type: "CIT",
+      message:
+        "Initial customer-initiated payment",
+      idempotencyKey:
+        `${subscriptionId}-INITIAL`
+    };
+
+    subscriptions.push(
+      subscription
+    );
+
+    payments.push(payment);
+
+    const timestamp =
+      new Date().toISOString();
+
+    events.push(
+      {
+        time: timestamp,
+        subscriptionId,
+        text:
+          `Customer selected ${plan} Subscribe & Save`
+      },
+      {
+        time: timestamp,
+        subscriptionId,
+        text:
+          "Recurring-payment consent captured"
+      },
+      {
+        time: timestamp,
+        subscriptionId,
+        text:
+          "Initial customer-initiated payment SUCCESS"
+      },
+      {
+        time: timestamp,
+        subscriptionId,
+        text:
+          "Subscription became ACTIVE"
+      }
+    );
+
+    res
+      .status(201)
+      .json({
+        subscription,
+        payment,
+        webhook: {
+          event:
+            "payment.authorized",
+          payment_id:
+            paymentId,
+          subscription_id:
+            subscriptionId,
+          status: "SUCCESS"
+        }
+      });
   }
-
-  const subscriptionId = id("SUB-SIM-");
-  const paymentId = id("PAY-CIT-");
-  const nextBillingDate = nextMonthDate();
-
-  const subscription = {
-    id: subscriptionId,
-    customer: customerName,
-    plan,
-    amount: Number(amount),
-    currency,
-    frequency,
-    status: "ACTIVE",
-    nextBillingDate,
-    paymentMethod: `•••• ${String(paymentMethod).slice(-4)}`
-  };
-
-  const payment = {
-    id: paymentId,
-    subscriptionId,
-    amount: Number(amount),
-    status: "SUCCESS",
-    type: "CIT",
-    message: "Initial customer-initiated payment",
-    idempotencyKey: `${subscriptionId}-INITIAL`
-  };
-
-  subscriptions.push(subscription);
-  payments.push(payment);
-
-  const timestamp = new Date().toISOString();
-
-  events.push(
-    {
-      time: timestamp,
-      subscriptionId,
-      text: `Customer selected ${plan} Subscribe & Save`
-    },
-    {
-      time: timestamp,
-      subscriptionId,
-      text: "Recurring-payment consent captured"
-    },
-    {
-      time: timestamp,
-      subscriptionId,
-      text: "Initial customer-initiated payment SUCCESS"
-    },
-    {
-      time: timestamp,
-      subscriptionId,
-      text: "Subscription became ACTIVE"
-    }
-  );
-
-  res.status(201).json({
-    subscription,
-    payment,
-    webhook: {
-      event: "payment.authorized",
-      payment_id: paymentId,
-      subscription_id: subscriptionId,
-      status: "SUCCESS"
-    }
-  });
-});
+);
 
 /* =========================
    PAYMENT SIMULATOR
 ========================= */
 
-app.post("/api/payments/simulate", (req, res) => {
-  const {
-    subscriptionId = "SUB-10001",
-    outcome = "SUCCESS",
-    amount = 999,
-    idempotencyKey
-  } = req.body;
+app.post(
+  "/api/payments/simulate",
+  (req, res) => {
+    const {
+      subscriptionId =
+        "SUB-10001",
+      outcome = "SUCCESS",
+      amount = 999,
+      idempotencyKey
+    } = req.body;
 
-  const key = idempotencyKey || crypto.randomUUID();
+    const key =
+      idempotencyKey ||
+      crypto.randomUUID();
 
-  /* Idempotency check */
-  const existing = payments.find(
-    (p) => p.idempotencyKey === key
-  );
+    /* =========================
+       IDEMPOTENCY CHECK
+    ========================= */
 
-  if (existing) {
-    return res.json({
-      ...existing,
-      duplicate: true
-    });
-  }
+    const existing =
+      payments.find(
+        (p) =>
+          p.idempotencyKey ===
+          key
+      );
 
-  const paymentId = id("PAY-SIM-");
+    if (existing) {
+      return res.json({
+        ...existing,
 
-  const payment = {
-    id: paymentId,
-    subscriptionId,
-    amount: Number(amount),
-    status: outcome,
-    type: "MIT",
-    idempotencyKey: key,
-    message: "Simulated PSP outcome"
-  };
+        /*
+          Important:
+          This request is a duplicate
+          of an already processed
+          payment request.
 
-  payments.push(payment);
+          We return the ORIGINAL
+          payment instead of creating
+          another payment.
+        */
 
-  const subscription =
-    subscriptions.find(
-      (x) => x.id === subscriptionId
-    );
+        duplicate: true,
 
-  if (outcome === "SUCCESS") {
-    if (subscription) {
-      subscription.status = "ACTIVE";
-      subscription.nextBillingDate = "2026-11-12";
+        message:
+          "Duplicate request detected. Original payment response returned. No duplicate charge created."
+      });
     }
 
-    events.push({
-      time: new Date().toISOString(),
-      subscriptionId,
-      text:
-        "Recurring payment SUCCESS; billing cycle PAID"
-    });
-  }
+    /* =========================
+       CREATE NEW PAYMENT
+    ========================= */
 
-  else if (outcome === "DECLINED") {
-    if (subscription) {
-      subscription.status = "PAYMENT_RETRY";
+    const paymentId =
+      id("PAY-SIM-");
+
+    const payment = {
+      id: paymentId,
+      subscriptionId,
+      amount: Number(amount),
+      status: outcome,
+      type: "MIT",
+      idempotencyKey: key,
+      message:
+        "Simulated PSP outcome"
+    };
+
+    payments.push(payment);
+
+    const subscription =
+      subscriptions.find(
+        (x) =>
+          x.id ===
+          subscriptionId
+      );
+
+    /* =========================
+       SUCCESS
+    ========================= */
+
+    if (
+      outcome === "SUCCESS"
+    ) {
+      if (subscription) {
+        subscription.status =
+          "ACTIVE";
+
+        subscription.nextBillingDate =
+          "2026-11-12";
+      }
+
+      events.push({
+        time:
+          new Date().toISOString(),
+
+        subscriptionId,
+
+        text:
+          "Recurring payment SUCCESS; billing cycle PAID"
+      });
     }
 
-    events.push({
-      time: new Date().toISOString(),
-      subscriptionId,
-      text:
-        "Payment DECLINED; retry evaluation scheduled"
-    });
-  }
+    /* =========================
+       DECLINED
+    ========================= */
 
-  else if (outcome === "UNKNOWN") {
-    events.push({
-      time: new Date().toISOString(),
-      subscriptionId,
-      text:
-        "PSP TIMEOUT; payment UNKNOWN; duplicate charge blocked pending reconciliation"
-    });
-  }
+    else if (
+      outcome === "DECLINED"
+    ) {
+      if (subscription) {
+        subscription.status =
+          "PAYMENT_RETRY";
+      }
 
-  else if (outcome === "3DS_REQUIRED") {
-    events.push({
-      time: new Date().toISOString(),
-      subscriptionId,
-      text:
-        "3DS authentication required; payment awaiting authentication"
-    });
-  }
+      events.push({
+        time:
+          new Date().toISOString(),
 
-  res.json({
-    payment,
-    webhook: {
-      event:
-        outcome === "SUCCESS"
-          ? "payment.authorized"
-          : "payment.status",
-      payment_id: paymentId,
-      subscription_id: subscriptionId,
-      status: outcome
+        subscriptionId,
+
+        text:
+          "Payment DECLINED; retry evaluation scheduled"
+      });
     }
-  });
-});
+
+    /* =========================
+       UNKNOWN
+    ========================= */
+
+    else if (
+      outcome === "UNKNOWN"
+    ) {
+      events.push({
+        time:
+          new Date().toISOString(),
+
+        subscriptionId,
+
+        text:
+          "PSP TIMEOUT; payment UNKNOWN; duplicate charge blocked pending reconciliation"
+      });
+    }
+
+    /* =========================
+       3DS REQUIRED
+    ========================= */
+
+    else if (
+      outcome ===
+      "3DS_REQUIRED"
+    ) {
+      events.push({
+        time:
+          new Date().toISOString(),
+
+        subscriptionId,
+
+        text:
+          "3DS authentication required; payment awaiting authentication"
+      });
+    }
+
+    /* =========================
+       RESPONSE
+    ========================= */
+
+    res.json({
+      payment,
+
+      webhook: {
+        event:
+          outcome === "SUCCESS"
+            ? "payment.authorized"
+            : "payment.status",
+
+        payment_id:
+          paymentId,
+
+        subscription_id:
+          subscriptionId,
+
+        status: outcome
+      }
+    });
+  }
+);
 
 /* =========================
    RECONCILIATION
 ========================= */
 
-app.post("/api/payments/:id/reconcile", (req, res) => {
-  const payment = payments.find(
-    (x) => x.id === req.params.id
-  );
+app.post(
+  "/api/payments/:id/reconcile",
+  (req, res) => {
+    const payment =
+      payments.find(
+        (x) =>
+          x.id ===
+          req.params.id
+      );
 
-  if (!payment) {
-    return res.status(404).json({
-      error: "Payment not found"
+    if (!payment) {
+      return res
+        .status(404)
+        .json({
+          error:
+            "Payment not found"
+        });
+    }
+
+    payment.status =
+      "SUCCESS";
+
+    payment.reconciled =
+      true;
+
+    const subscription =
+      subscriptions.find(
+        (x) =>
+          x.id ===
+          payment.subscriptionId
+      );
+
+    if (subscription) {
+      subscription.status =
+        "ACTIVE";
+    }
+
+    events.push({
+      time:
+        new Date().toISOString(),
+
+      subscriptionId:
+        payment.subscriptionId,
+
+      text:
+        "Reconciliation confirmed SUCCESS; billing cycle PAID; no duplicate charge"
+    });
+
+    res.json({
+      payment,
+
+      result:
+        "SUCCESS",
+
+      duplicateChargePrevented:
+        true
     });
   }
-
-  payment.status = "SUCCESS";
-  payment.reconciled = true;
-
-  const subscription =
-    subscriptions.find(
-      (x) => x.id === payment.subscriptionId
-    );
-
-  if (subscription) {
-    subscription.status = "ACTIVE";
-  }
-
-  events.push({
-    time: new Date().toISOString(),
-    subscriptionId: payment.subscriptionId,
-    text:
-      "Reconciliation confirmed SUCCESS; billing cycle PAID; no duplicate charge"
-  });
-
-  res.json({
-    payment,
-    result: "SUCCESS",
-    duplicateChargePrevented: true
-  });
-});
+);
 
 /* =========================
    SUBSCRIPTION MANAGEMENT
 ========================= */
 
-app.post("/api/subscriptions/:id/:action", (req, res) => {
-  const subscription =
-    subscriptions.find(
-      (x) => x.id === req.params.id
+app.post(
+  "/api/subscriptions/:id/:action",
+  (req, res) => {
+    const subscription =
+      subscriptions.find(
+        (x) =>
+          x.id ===
+          req.params.id
+      );
+
+    if (!subscription) {
+      return res
+        .status(404)
+        .json({
+          error:
+            "Subscription not found"
+        });
+    }
+
+    const statusMap = {
+      pause: "PAUSED",
+      resume: "ACTIVE",
+      cancel: "CANCELLED"
+    };
+
+    const newStatus =
+      statusMap[
+        req.params.action
+      ];
+
+    if (!newStatus) {
+      return res
+        .status(400)
+        .json({
+          error:
+            "Unsupported action"
+        });
+    }
+
+    subscription.status =
+      newStatus;
+
+    events.push({
+      time:
+        new Date().toISOString(),
+
+      subscriptionId:
+        subscription.id,
+
+      text:
+        `Subscription ${req.params.action.toUpperCase()} requested`
+    });
+
+    res.json(
+      subscription
     );
-
-  if (!subscription) {
-    return res.status(404).json({
-      error: "Subscription not found"
-    });
   }
-
-  const statusMap = {
-    pause: "PAUSED",
-    resume: "ACTIVE",
-    cancel: "CANCELLED"
-  };
-
-  const newStatus =
-    statusMap[req.params.action];
-
-  if (!newStatus) {
-    return res.status(400).json({
-      error: "Unsupported action"
-    });
-  }
-
-  subscription.status = newStatus;
-
-  events.push({
-    time: new Date().toISOString(),
-    subscriptionId: subscription.id,
-    text:
-      `Subscription ${req.params.action.toUpperCase()} requested`
-  });
-
-  res.json(subscription);
-});
+);
 
 /* =========================
    VERCEL / SERVER
 ========================= */
 
-const PORT = process.env.PORT || 4000;
+const PORT =
+  process.env.PORT || 4000;
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(
-    `Backend running on port ${PORT}`
-  );
-});
+app.listen(
+  PORT,
+  "0.0.0.0",
+  () => {
+    console.log(
+      `Backend running on port ${PORT}`
+    );
+  }
+);
